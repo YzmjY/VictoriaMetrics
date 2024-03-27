@@ -656,14 +656,15 @@ func (ar *AlertingRule) restore(ctx context.Context, q datasource.Querier, ts ti
 // and returns only those which should be sent to notifier.
 // Isn't concurrent safe.
 func (ar *AlertingRule) alertsToSend(ts time.Time, resolveDuration, resendDelay time.Duration) []notifier.Alert {
+	currentTime := time.Now()
 	needsSending := func(a *notifier.Alert) bool {
 		if a.State == notifier.StatePending {
 			return false
 		}
-		if a.ResolvedAt.After(a.LastSent) {
+		if a.Start == ts || a.ResolvedAt == ts {
 			return true
 		}
-		return a.LastSent.Add(resendDelay).Before(ts)
+		return a.LastSent.Add(resendDelay).Before(currentTime)
 	}
 
 	var alerts []notifier.Alert
@@ -671,11 +672,11 @@ func (ar *AlertingRule) alertsToSend(ts time.Time, resolveDuration, resendDelay 
 		if !needsSending(a) {
 			continue
 		}
-		a.End = ts.Add(resolveDuration)
+		a.End = currentTime.Add(resolveDuration)
 		if a.State == notifier.StateInactive {
 			a.End = a.ResolvedAt
 		}
-		a.LastSent = ts
+		a.LastSent = currentTime
 		alerts = append(alerts, *a)
 	}
 	return alerts

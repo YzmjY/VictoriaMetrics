@@ -67,8 +67,10 @@ See also [LTS releases](https://docs.victoriametrics.com/lts-releases/).
 * BUGFIX: [vmui](https://docs.victoriametrics.com/#vmui): fix VictoriaLogs UI query handling to correctly apply `_time` filter across all queries. See [this issue](https://github.com/VictoriaMetrics/VictoriaMetrics/issues/5920).
 * BUGFIX: [vmselect](https://docs.victoriametrics.com/): make vmselect resilient to absence of cache folder. If cache folder was mistakenly deleted by user or OS, vmselect will try re-creating it first. See [this issue](https://github.com/VictoriaMetrics/VictoriaMetrics/issues/5985).
 * BUGFIX: [Single-node VictoriaMetrics](https://docs.victoriametrics.com/) and `vmselect` in [VictoriaMetrics cluster](https://docs.victoriametrics.com/cluster-victoriametrics/): limit duration of requests to /api/v1/labels, /api/v1/label/.../values or /api/v1/series with `-search.maxLabelsAPIDuration` duration. Before, `-search.maxExportDuration` value was used by mistake. Thanks to @kbweave for the [pull request](https://github.com/VictoriaMetrics/VictoriaMetrics/pull/5992).
-* BUGFIX: [vmagent](https://docs.victoriametrics.com/vmagent.html): fixed response body and headers for AWS Firehose HTTP Destination.
+* BUGFIX: [vmagent](https://docs.victoriametrics.com/vmagent.html): fix response body and headers for AWS Firehose HTTP Destination.
 * BUGFIX: properly wait for force merge to be completed during the shutdown. See [this issue](https://github.com/VictoriaMetrics/VictoriaMetrics/issues/5944) for the details.
+* BUGFIX: [vmalert](https://docs.victoriametrics.com/vmalert.html): fix `endsAt` field in messages that send to alertmanager, previously rules with small interval could never be firing. See [this issue](https://github.com/VictoriaMetrics/VictoriaMetrics/issues/5995) for the details.
+* BUGFIX: [vmalert](https://docs.victoriametrics.com/vmalert.html): fix behavior of `-rule.resendDelay`, before it could also prevent sending firing alert for the first time.
 
 ## [v1.99.0](https://github.com/VictoriaMetrics/VictoriaMetrics/releases/tag/v1.99.0)
 
