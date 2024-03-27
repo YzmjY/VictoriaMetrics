@@ -43,11 +43,13 @@ func TestAlertingRule_ToTimeSeries(t *testing.T) {
 		},
 		{
 			newTestAlertingRule("instant extra labels", 0),
-			&notifier.Alert{State: notifier.StateFiring, ActiveAt: timestamp.Add(time.Second),
+			&notifier.Alert{
+				State: notifier.StateFiring, ActiveAt: timestamp.Add(time.Second),
 				Labels: map[string]string{
 					"job":      "foo",
 					"instance": "bar",
-				}},
+				},
+			},
 			[]prompbmarshal.TimeSeries{
 				newTimeSeries([]float64{1}, []int64{timestamp.UnixNano()}, map[string]string{
 					"__name__":      alertMetricName,
@@ -66,11 +68,13 @@ func TestAlertingRule_ToTimeSeries(t *testing.T) {
 		},
 		{
 			newTestAlertingRule("instant labels override", 0),
-			&notifier.Alert{State: notifier.StateFiring, ActiveAt: timestamp.Add(time.Second),
+			&notifier.Alert{
+				State: notifier.StateFiring, ActiveAt: timestamp.Add(time.Second),
 				Labels: map[string]string{
 					alertStateLabel: "foo",
 					"__name__":      "bar",
-				}},
+				},
+			},
 			[]prompbmarshal.TimeSeries{
 				newTimeSeries([]float64{1}, []int64{timestamp.UnixNano()}, map[string]string{
 					"__name__":      alertMetricName,
@@ -572,25 +576,33 @@ func TestAlertingRule_ExecRange(t *testing.T) {
 				},
 			},
 			[]*notifier.Alert{
-				{State: notifier.StateFiring, ActiveAt: time.Unix(1, 0),
+				{
+					State: notifier.StateFiring, ActiveAt: time.Unix(1, 0),
 					Labels: map[string]string{
 						"source": "vm",
-					}},
-				{State: notifier.StateFiring, ActiveAt: time.Unix(100, 0),
+					},
+				},
+				{
+					State: notifier.StateFiring, ActiveAt: time.Unix(100, 0),
 					Labels: map[string]string{
 						"source": "vm",
-					}},
+					},
+				},
 				//
-				{State: notifier.StateFiring, ActiveAt: time.Unix(1, 0),
+				{
+					State: notifier.StateFiring, ActiveAt: time.Unix(1, 0),
 					Labels: map[string]string{
 						"foo":    "bar",
 						"source": "vm",
-					}},
-				{State: notifier.StateFiring, ActiveAt: time.Unix(5, 0),
+					},
+				},
+				{
+					State: notifier.StateFiring, ActiveAt: time.Unix(5, 0),
 					Labels: map[string]string{
 						"foo":    "bar",
 						"source": "vm",
-					}},
+					},
+				},
 			},
 			nil,
 		},
@@ -1058,59 +1070,37 @@ func TestAlertsToSend(t *testing.T) {
 		})
 		for i, exp := range expAlerts {
 			got := gotAlerts[i]
-			if got.LastSent != exp.LastSent {
-				t.Fatalf("expected LastSent to be %v; got %v", exp.LastSent, got.LastSent)
-			}
-			if got.End != exp.End {
-				t.Fatalf("expected End to be %v; got %v", exp.End, got.End)
+			if got.Name != exp.Name {
+				t.Fatalf("expected Name to be %v; got %v", exp.Name, got.Name)
 			}
 		}
 	}
 
-	f( // send firing alert with custom resolve time
-		[]*notifier.Alert{{State: notifier.StateFiring}},
-		[]*notifier.Alert{{LastSent: ts, End: ts.Add(5 * time.Minute)}},
+	f( // send firing alert with non-zero resendDelay
+		[]*notifier.Alert{{State: notifier.StateFiring, Start: ts, LastSent: ts.Add(-30 * time.Second)}},
+		[]*notifier.Alert{{State: notifier.StateFiring, Start: ts}},
 		5*time.Minute, time.Minute,
 	)
-	f( // resolve inactive alert at the current timestamp
+	f( // resolve inactive alert with non-zero resendDelay
+		[]*notifier.Alert{{State: notifier.StateInactive, ResolvedAt: ts, LastSent: ts.Add(-30 * time.Second)}},
 		[]*notifier.Alert{{State: notifier.StateInactive, ResolvedAt: ts}},
-		[]*notifier.Alert{{LastSent: ts, End: ts}},
-		time.Minute, time.Minute,
+		5*time.Minute, time.Minute,
 	)
 	f( // mixed case of firing and resolved alerts. Names are added for deterministic sorting
-		[]*notifier.Alert{{Name: "a", State: notifier.StateFiring}, {Name: "b", State: notifier.StateInactive, ResolvedAt: ts}},
-		[]*notifier.Alert{{Name: "a", LastSent: ts, End: ts.Add(5 * time.Minute)}, {Name: "b", LastSent: ts, End: ts}},
+		[]*notifier.Alert{
+			{Name: "a", State: notifier.StateFiring, Start: ts.Add(-30 * time.Second), LastSent: ts.Add(-2 * time.Minute)},
+			{Name: "b", State: notifier.StateFiring, Start: ts.Add(-30 * time.Second), LastSent: ts.Add(-30 * time.Second)},
+			{Name: "c", State: notifier.StateInactive, ResolvedAt: ts},
+			{Name: "e", State: notifier.StateInactive, ResolvedAt: ts, LastSent: ts.Add(-time.Second)},
+			{Name: "d", State: notifier.StateInactive, ResolvedAt: ts.Add(-2 * time.Second), LastSent: ts.Add(-time.Second)},
+		},
+		[]*notifier.Alert{{Name: "a"}, {Name: "c", End: ts}, {Name: "e", End: ts}},
 		5*time.Minute, time.Minute,
-	)
-	f( // mixed case of pending and resolved alerts. Names are added for deterministic sorting
-		[]*notifier.Alert{{Name: "a", State: notifier.StatePending}, {Name: "b", State: notifier.StateInactive, ResolvedAt: ts}},
-		[]*notifier.Alert{{Name: "b", LastSent: ts, End: ts}},
-		5*time.Minute, time.Minute,
-	)
-	f( // attempt to send alert that was already sent in the resendDelay interval
-		[]*notifier.Alert{{State: notifier.StateFiring, LastSent: ts.Add(-time.Second)}},
-		nil,
-		time.Minute, time.Minute,
-	)
-	f( // attempt to send alert that was sent out of the resendDelay interval
-		[]*notifier.Alert{{State: notifier.StateFiring, LastSent: ts.Add(-2 * time.Minute)}},
-		[]*notifier.Alert{{LastSent: ts, End: ts.Add(time.Minute)}},
-		time.Minute, time.Minute,
 	)
 	f( // alert must be sent even if resendDelay interval is 0
 		[]*notifier.Alert{{State: notifier.StateFiring, LastSent: ts.Add(-time.Second)}},
-		[]*notifier.Alert{{LastSent: ts, End: ts.Add(time.Minute)}},
+		[]*notifier.Alert{{}},
 		time.Minute, 0,
-	)
-	f( // inactive alert which has been sent already
-		[]*notifier.Alert{{State: notifier.StateInactive, LastSent: ts.Add(-time.Second), ResolvedAt: ts.Add(-2 * time.Second)}},
-		nil,
-		time.Minute, time.Minute,
-	)
-	f( // inactive alert which has been resolved after last send
-		[]*notifier.Alert{{State: notifier.StateInactive, LastSent: ts.Add(-time.Second), ResolvedAt: ts}},
-		[]*notifier.Alert{{LastSent: ts, End: ts}},
-		time.Minute, time.Minute,
 	)
 }
 
