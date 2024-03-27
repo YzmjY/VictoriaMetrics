@@ -53,6 +53,7 @@ var (
 	maxInmemoryBlockCacheSizeOnce sync.Once
 )
 
+// part下核心的三个文件 metadata.bin/index.bin/items.bin/lens.bin
 type part struct {
 	ph partHeader
 
@@ -67,7 +68,15 @@ type part struct {
 	lensFile  fs.MustReadAtCloser
 }
 
+// 读取part数据
+// 可以看到经过该函数之后，内存中的数据只有metaindex文件的所有数据，以及partheader和index、items、lens三个文件的句柄
 func mustOpenFilePart(path string) *part {
+	// 从metadata.json文件中读取partHeader信息
+	// partHeader中包括了该part中
+	// - 有多少items
+	// - 有多少block
+	// - 第一个Item
+	// - 最后一个Item
 	var ph partHeader
 	ph.MustReadMetadata(path)
 

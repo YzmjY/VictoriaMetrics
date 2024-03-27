@@ -170,7 +170,8 @@ func MustOpenStorage(path string, retention time.Duration, maxHourlySeries, maxD
 		retention = retentionMax
 	}
 	s := &Storage{
-		path:           path,
+		path: path,
+		// path/cache 对应cache目录
 		cachePath:      filepath.Join(path, cacheDirname),
 		retentionMsecs: retention.Milliseconds(),
 		stop:           make(chan struct{}),
@@ -190,6 +191,7 @@ func MustOpenStorage(path string, retention time.Duration, maxHourlySeries, maxD
 	}
 
 	// Protect from concurrent opens.
+	// 创建文件锁，保证进程独占
 	s.flockF = fs.MustCreateFlockFile(path)
 
 	// Check whether restore process finished successfully
@@ -230,12 +232,18 @@ func MustOpenStorage(path string, retention time.Duration, maxHourlySeries, maxD
 	s.prefetchedMetricIDs = &uint64set.Set{}
 
 	// Load metadata
+	// metadata目录,path/metadata
 	metadataDir := filepath.Join(path, metadataDirname)
+
+	// indexdb目录,path/indexdb
 	isEmptyDB := !fs.IsPathExist(filepath.Join(path, indexdbDirname))
 	fs.MustMkdirIfNotExist(metadataDir)
+
+	// TODO: 存放在metadata目录下的，目前是干什么的还不清楚
 	s.minTimestampForCompositeIndex = mustGetMinTimestampForCompositeIndex(metadataDir, isEmptyDB)
 
 	// Load indexdb
+	// 加载index,data/indexdb
 	idbPath := filepath.Join(path, indexdbDirname)
 	idbSnapshotsPath := filepath.Join(idbPath, snapshotsDirname)
 	fs.MustMkdirIfNotExist(idbSnapshotsPath)
@@ -2576,11 +2584,15 @@ func (s *Storage) mustOpenIndexDBTables(path string) (next, curr, prev *indexDB)
 		}
 		tableNames = append(tableNames, tableName)
 	}
+
+	// table按照字典序排序
 	sort.Slice(tableNames, func(i, j int) bool {
 		return tableNames[i] < tableNames[j]
 	})
 	switch len(tableNames) {
 	case 0:
+		// 不存在indexdb table
+		// 新建三个，名称为创建时的nano时间戳+1
 		prevName := nextIndexDBTableName()
 		currName := nextIndexDBTableName()
 		nextName := nextIndexDBTableName()
@@ -2594,6 +2606,7 @@ func (s *Storage) mustOpenIndexDBTables(path string) (next, curr, prev *indexDB)
 		tableNames = append(tableNames, nextName)
 	default:
 		// Remove all the tables except the last three tables.
+		// 删除其他的?只留最近的三个
 		for _, tn := range tableNames[:len(tableNames)-3] {
 			pathToRemove := filepath.Join(path, tn)
 			logger.Infof("removing obsolete indexdb dir %q...", pathToRemove)
@@ -2619,11 +2632,13 @@ func (s *Storage) mustOpenIndexDBTables(path string) (next, curr, prev *indexDB)
 
 var indexDBTableNameRegexp = regexp.MustCompile("^[0-9A-F]{16}$")
 
+// indexDB table的名称为一个16进制数字
 func nextIndexDBTableName() string {
 	n := indexDBTableIdx.Add(1)
 	return fmt.Sprintf("%016X", n)
 }
 
+// 是初次被调用时的nano时间戳
 var indexDBTableIdx = func() *atomic.Uint64 {
 	var x atomic.Uint64
 	x.Store(uint64(time.Now().UnixNano()))

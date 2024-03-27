@@ -177,6 +177,7 @@ func (riss *rawItemsShards) addItems(tb *Table, items [][]byte) {
 	shards := riss.shards
 	shardsLen := uint32(len(shards))
 	for len(items) > 0 {
+		// 看起来是round robin去将item添加到不同的shard中
 		n := riss.shardIdx.Add(1)
 		idx := n % shardsLen
 		tailItems, ibsToFlush := shards[idx].addItems(items)
@@ -225,11 +226,20 @@ type rawItemsShardNopad struct {
 	ibs []*inmemoryBlock
 }
 
+//  
 type rawItemsShard struct {
 	rawItemsShardNopad
 
 	// The padding prevents false sharing on widespread platforms with
 	// 128 mod (cache line size) = 0 .
+	// 对齐 128 字节的原因是为了避免假共享。假共享是指多个线程同时访问同一个缓存行（cache line），导致缓存行频繁地在不同的 CPU 核心之间切换，从而降低性能。
+	// 在许多现代计算机体系结构中，缓存行的大小通常是 128 字节或 256 字节。因此，如果一个变量的大小不是 128 字节的倍数，那么它可能会与其他变量共享同一个缓存行，从而导致假共享。
+	// 例如，如果有两个变量 A 和 B，它们的大小分别是 64 字节和 64 字节，并且它们在内存中是相邻的，那么它们可能会共享同一个缓存行。
+	// 如果两个线程同时访问 A 和 B，那么就会发生假共享，因为缓存行需要在两个线程之间频繁地切换。
+	// 为了避免假共享，可以在变量之间添加填充，使它们的大小都成为 128 字节的倍数。这样，每个变量都会独占一个缓存行，从而避免了假共享。
+	// 如果不对齐 128 字节，那么在某些情况下可能会出现性能问题，尤其是在多线程环境中。例如，如果一个变量的大小不是 128 字节的倍数，
+	// 那么它可能会与其他变量共享同一个缓存行，从而导致假共享。此外，如果一个结构体的大小不是 128 字节的倍数，那么在访问结构体中的成员时可能会出现性能问题，
+	// 因为 CPU 可能需要多次访问内存才能获取整个结构体的值。
 	_ [128 - unsafe.Sizeof(rawItemsShardNopad{})%128]byte
 }
 
@@ -367,13 +377,16 @@ func MustOpenTable(path string, flushCallback func(), prepareBlock PrepareBlockC
 		inmemoryPartsLimitCh: make(chan struct{}, maxInmemoryParts),
 		stopCh:               make(chan struct{}),
 	}
+	// 打开table时mergeIdx为当前的nano时间戳
 	tb.mergeIdx.Store(uint64(time.Now().UnixNano()))
+	// TODO:没搞清楚这个rawItems是干什么的
 	tb.rawItems.init()
 	tb.startBackgroundWorkers()
 
 	return tb
 }
 
+// 后台worker做的工作没看，理解整个table的写入和读取过程之后再看
 func (tb *Table) startBackgroundWorkers() {
 	// Start file parts mergers, so they could start merging unmerged parts if needed.
 	// There is no need in starting in-memory parts mergers, since there are no in-memory parts yet.
@@ -1506,6 +1519,7 @@ func mustOpenParts(path string) []*partWrapper {
 	fs.MustSyncPath(path)
 
 	// Open parts
+	// 根据各个part目录获取part
 	var pws []*partWrapper
 	for _, partName := range partNames {
 		partPath := filepath.Join(path, partName)
@@ -1599,9 +1613,11 @@ func mustWritePartNames(pws []*partWrapper, dstDir string) {
 	fs.MustWriteAtomic(partNamesPath, data, true)
 }
 
+// 获取目录下所有part名称
 func mustReadPartNames(srcDir string) []string {
 	partNamesPath := filepath.Join(srcDir, partsFilename)
 	if fs.IsPathExist(partNamesPath) {
+		// 所有part保存在part.json文件中
 		data, err := os.ReadFile(partNamesPath)
 		if err != nil {
 			logger.Panicf("FATAL: cannot read %s file: %s", partsFilename, err)

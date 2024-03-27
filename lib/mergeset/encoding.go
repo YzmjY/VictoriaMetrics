@@ -59,15 +59,20 @@ func (ib *inmemoryBlock) Swap(i, j int) {
 	items[i], items[j] = items[j], items[i]
 }
 
+// memory中的block
+// 这是采用struct of array的形式？
 type inmemoryBlock struct {
 	// commonPrefix contains common prefix for all the items stored in the inmemoryBlock
+	// block内共享的前缀
 	commonPrefix []byte
 
 	// data contains source data for items
+	// item的真实数据
 	data []byte
 
 	// items contains items stored in inmemoryBlock.
 	// Every item contains the prefix specified at commonPrefix.
+	// 记录每个Item的开始结束idx
 	items []Item
 }
 

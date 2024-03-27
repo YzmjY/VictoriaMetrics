@@ -96,11 +96,14 @@ func unmarshalMetaindexRows(dst []metaindexRow, r io.Reader) ([]metaindexRow, er
 
 	dstLen := len(dst)
 	for len(data) > 0 {
+		// 留出最后一个metaindexRow位置
 		if len(dst) < cap(dst) {
 			dst = dst[:len(dst)+1]
 		} else {
 			dst = append(dst, metaindexRow{})
 		}
+
+		// 可以看出这样减少了内存分配和拷贝
 		mr := &dst[len(dst)-1]
 		tail, err := mr.Unmarshal(data)
 		if err != nil {
@@ -108,6 +111,8 @@ func unmarshalMetaindexRows(dst []metaindexRow, r io.Reader) ([]metaindexRow, er
 		}
 		data = tail
 	}
+
+	// 经过解析发现并没有增加
 	if dstLen == len(dst) {
 		return dst, fmt.Errorf("expecting non-zero metaindex rows; got zero")
 	}
